@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_is_filter_list_mem_var_tree" model="ir.ui.view">
+        <field name="name">is.filter.list.mem.var.list</field>
+        <field name="model">is.filter.list.mem.var</field>
+        <field name="arch" type="xml">
+            <list string="Filtres mémorisés" editable="bottom">
+                <field name="user_id"/>
+                <field name="view_id"/>
+                <field name="model_id"/>
+                <field name="field_id"/>
+                <field name="value"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_is_filter_list_mem_var_search" model="ir.ui.view">
+        <field name="name">is.filter.list.mem.var.search</field>
+        <field name="model">is.filter.list.mem.var</field>
+        <field name="arch" type="xml">
+            <search string="Recherche Filtres">
+                <field name="user_id"/>
+                <field name="model_id"/>
+                <field name="view_id"/>
+                <field name="field_id"/>
+                <group expand="0" string="Group By">
+                    <filter string="Utilisateur" name="group_by_user" context="{'group_by': 'user_id'}"/>
+                    <filter string="Modèle" name="group_by_model" context="{'group_by': 'model_id'}"/>
+                    <filter string="Vue" name="group_by_view" context="{'group_by': 'view_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_is_filter_list_mem_var" model="ir.actions.act_window">
+        <field name="name">Filtres mémorisés</field>
+        <field name="res_model">is.filter.list.mem.var</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <menuitem id="menu_is_filter_list_mem_var"
+              name="Filtres mémorisés"
+              parent="base.menu_users"
+              action="action_is_filter_list_mem_var"
+              sequence="100"/>
+</odoo>

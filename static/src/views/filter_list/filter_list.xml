@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="is_filter_list.FilterListView" t-inherit="web.ListView" t-inherit-mode="primary">
+        <xpath expr="//t[@t-component='props.Renderer']" position="attributes">
+            <attribute name="onFilterChange.bind">onFilterChange</attribute>
+            <attribute name="filters">filterState.filters</attribute>
+        </xpath>
+    </t>
+
+    <t t-name="is_filter_list.FilterListRenderer" t-inherit="web.ListRenderer" t-inherit-mode="primary">
+        <xpath expr="//thead/tr" position="after">
+            <tr class="o_filter_list_row">
+                <th t-if="hasSelectors"></th>
+                <t t-foreach="columns" t-as="column" t-key="column.id">
+                    <th t-if="column.type === 'field'">
+                        <t t-set="field" t-value="props.list.fields[column.name]"/>
+                        <t t-if="field and field.searchable and (field.type === 'char' or field.type === 'many2one' or field.type === 'selection' or field.type === 'date' or field.type === 'datetime' or field.type === 'integer' or field.type === 'float' or field.type === 'monetary' or field.type === 'boolean')">
+                            <input type="text" 
+                                   class="form-control form-control-sm" 
+                                   t-att-placeholder="column.label"
+                                   t-att-title="this.getTooltip(field)"
+                                   t-att-value="props.filters[column.name] || ''"
+                                   t-on-change="(ev) => this.onInputChange(column.name, ev)"
+                                   t-on-click.stop=""
+                                   />
+                        </t>
+                    </th>
+                    <th t-else=""></th>
+                </t>
+                <th t-if="hasOpenFormViewColumn"></th>
+                <th t-if="hasActionsColumn"></th>
+            </tr>
+        </xpath>
+    </t>
+
+</templates>
