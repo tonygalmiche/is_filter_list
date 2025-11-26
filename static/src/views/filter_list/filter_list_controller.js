@@ -171,40 +171,190 @@ export class FilterListController extends ListController {
 
             const fieldDef = fields[fieldName];
             if (!fieldDef) continue;
-            if (!fieldDef) continue;
 
-            if (fieldDef.type === 'selection' && fieldDef.selection) {
-                // Filter on labels instead of keys for selection fields
-                const matchingKeys = fieldDef.selection
-                    .filter(([key, label]) => label.toLowerCase().includes(value.toLowerCase()))
-                    .map(([key, label]) => key);
-                
-                if (matchingKeys.length > 0) {
-                    domain.push([fieldName, 'in', matchingKeys]);
-                } else {
-                    // No match found, force empty result
-                    domain.push([fieldName, 'in', []]); 
-                }
-            } else if (['date', 'datetime'].includes(fieldDef.type)) {
-                const dateDomain = this.getDateDomain(fieldName, value, fieldDef.type);
-                if (dateDomain) {
-                    domain.push(...dateDomain);
-                }
-            } else if (['integer', 'float', 'monetary'].includes(fieldDef.type)) {
-                const numDomain = this.getNumericDomain(fieldName, value);
-                if (numDomain) {
-                    domain.push(...numDomain);
-                }
-            } else if (fieldDef.type === 'boolean') {
-                const boolDomain = this.getBooleanDomain(fieldName, value);
-                if (boolDomain) {
-                    domain.push(...boolDomain);
-                }
-            } else {
-                domain.push([fieldName, 'ilike', value]);
+            // Parse OR/AND operators in the value
+            const fieldDomain = this.parseFilterExpression(fieldName, value, fieldDef);
+            if (fieldDomain && fieldDomain.length > 0) {
+                domain.push(...fieldDomain);
             }
         }
         return domain;
+    }
+
+    /**
+     * Parse une expression de filtre avec support des opérateurs OU et ET
+     * Syntaxe: 
+     *   - "valeur1, valeur2" ou "valeur1 OU valeur2" => OU
+     *   - "valeur1 ET valeur2" => ET
+     * Le ET est prioritaire sur le OU (évalué en premier)
+     */
+    parseFilterExpression(fieldName, value, fieldDef) {
+        // Séparer par OU (virgule ou " OU ")
+        // Attention: ne pas splitter les virgules dans les nombres (ex: 1,5)
+        const orParts = this.splitByOr(value);
+        
+        if (orParts.length > 1) {
+            // Construire un domaine avec des OU
+            const orDomains = [];
+            for (const part of orParts) {
+                const partDomain = this.parseAndExpression(fieldName, part.trim(), fieldDef);
+                if (partDomain && partDomain.length > 0) {
+                    orDomains.push(partDomain);
+                }
+            }
+            
+            if (orDomains.length === 0) return null;
+            if (orDomains.length === 1) return orDomains[0];
+            
+            // Construire le domaine OR avec la syntaxe Odoo: ['|', cond1, cond2]
+            return this.buildOrDomain(orDomains);
+        }
+        
+        // Pas de OU, vérifier le ET
+        return this.parseAndExpression(fieldName, value, fieldDef);
+    }
+
+    /**
+     * Sépare une chaîne par les opérateurs OU (virgule ou " OU ")
+     * en tenant compte des nombres avec virgule
+     */
+    splitByOr(value) {
+        // D'abord séparer par " OU " (insensible à la casse)
+        let parts = value.split(/\s+OU\s+/i);
+        
+        if (parts.length > 1) {
+            return parts;
+        }
+        
+        // Sinon, séparer par virgule, mais pas si c'est un nombre décimal
+        // Regex: virgule suivie d'un espace ou en fin, ou précédée d'un espace
+        // Mais pas virgule entre deux chiffres (nombre décimal)
+        const result = [];
+        let current = '';
+        let i = 0;
+        
+        while (i < value.length) {
+            if (value[i] === ',') {
+                // Vérifier si c'est une virgule décimale (chiffre avant et après)
+                const before = i > 0 ? value[i - 1] : '';
+                const after = i < value.length - 1 ? value[i + 1] : '';
+                
+                if (/\d/.test(before) && /\d/.test(after)) {
+                    // C'est une virgule décimale, on la garde
+                    current += value[i];
+                } else {
+                    // C'est un séparateur OU
+                    if (current.trim()) {
+                        result.push(current.trim());
+                    }
+                    current = '';
+                }
+            } else {
+                current += value[i];
+            }
+            i++;
+        }
+        
+        if (current.trim()) {
+            result.push(current.trim());
+        }
+        
+        return result.length > 0 ? result : [value];
+    }
+
+    /**
+     * Parse une expression avec opérateur ET
+     */
+    parseAndExpression(fieldName, value, fieldDef) {
+        // Séparer par " ET " (insensible à la casse)
+        const andParts = value.split(/\s+ET\s+/i);
+        
+        if (andParts.length > 1) {
+            // Construire un domaine avec des ET (comportement par défaut d'Odoo)
+            const andDomains = [];
+            for (const part of andParts) {
+                const partDomain = this.getSingleValueDomain(fieldName, part.trim(), fieldDef);
+                if (partDomain && partDomain.length > 0) {
+                    andDomains.push(...partDomain);
+                }
+            }
+            return andDomains;
+        }
+        
+        // Pas de ET, traiter comme valeur simple
+        return this.getSingleValueDomain(fieldName, value, fieldDef);
+    }
+
+    /**
+     * Construit un domaine OR à partir de plusieurs domaines
+     * Odoo utilise la notation polonaise: ['|', cond1, '|', cond2, cond3] pour (cond1 OR cond2 OR cond3)
+     */
+    buildOrDomain(domains) {
+        if (domains.length === 0) return [];
+        if (domains.length === 1) return domains[0];
+        
+        // Aplatir les domaines simples et construire la notation polonaise
+        const result = [];
+        
+        // Pour N conditions, on a besoin de N-1 opérateurs '|'
+        for (let i = 0; i < domains.length - 1; i++) {
+            result.push('|');
+        }
+        
+        // Ajouter toutes les conditions
+        for (const domain of domains) {
+            // Si le domaine a plusieurs conditions (ET implicite), les wrapper avec '&'
+            if (domain.length > 1) {
+                // Ajouter N-1 opérateurs '&' pour N conditions
+                for (let i = 0; i < domain.length - 1; i++) {
+                    result.push('&');
+                }
+            }
+            result.push(...domain);
+        }
+        
+        return result;
+    }
+
+    /**
+     * Génère le domaine pour une seule valeur (sans OU ni ET)
+     */
+    getSingleValueDomain(fieldName, value, fieldDef) {
+        if (!value || !value.trim()) return null;
+        value = value.trim();
+
+        if (fieldDef.type === 'selection' && fieldDef.selection) {
+            // Filter on labels instead of keys for selection fields
+            const matchingKeys = fieldDef.selection
+                .filter(([key, label]) => label.toLowerCase().includes(value.toLowerCase()))
+                .map(([key, label]) => key);
+            
+            if (matchingKeys.length > 0) {
+                return [[fieldName, 'in', matchingKeys]];
+            } else {
+                // No match found, force empty result
+                return [[fieldName, 'in', []]]; 
+            }
+        } else if (['date', 'datetime'].includes(fieldDef.type)) {
+            const dateDomain = this.getDateDomain(fieldName, value, fieldDef.type);
+            if (dateDomain) {
+                return dateDomain;
+            }
+        } else if (['integer', 'float', 'monetary'].includes(fieldDef.type)) {
+            const numDomain = this.getNumericDomain(fieldName, value);
+            if (numDomain) {
+                return numDomain;
+            }
+        } else if (fieldDef.type === 'boolean') {
+            const boolDomain = this.getBooleanDomain(fieldName, value);
+            if (boolDomain) {
+                return boolDomain;
+            }
+        } else {
+            return [[fieldName, 'ilike', value]];
+        }
+        
+        return null;
     }
 
     getHiddenFields() {

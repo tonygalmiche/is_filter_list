@@ -15,20 +15,24 @@ export class FilterListRenderer extends ListRenderer {
     }
 
     getTooltip(field) {
+        const orAndHelp = "\n\nOpérateurs logiques :\n" +
+                          "- val1, val2 ou val1 OU val2 : OU\n" +
+                          "- val1 ET val2 : ET";
+        
         if (['integer', 'float', 'monetary'].includes(field.type)) {
             return "Formats supportés :\n" +
                    "- xxx : Valeur exacte\n" +
                    "- >xxx : Supérieur à\n" +
                    "- >=xxx : Supérieur ou égal à\n" +
                    "- <xxx : Inférieur à\n" +
-                   "- <=xxx : Inférieur ou égal à";
+                   "- <=xxx : Inférieur ou égal à" + orAndHelp;
         }
         if (field.type === 'date') {
             return "Formats supportés (avec opérateurs >, >=, <, <=) :\n" +
                    "- AAAA : Année (ex: 2023)\n" +
                    "- AAAA-Sww : Semaine (ex: 2023-S01)\n" +
                    "- AAAA-MM : Mois (ex: 2023-01)\n" +
-                   "- AAAA-MM-JJ ou JJ/MM/AAAA : Jour exact";
+                   "- AAAA-MM-JJ ou JJ/MM/AAAA : Jour exact" + orAndHelp;
         }
         if (field.type === 'datetime') {
             return "Formats supportés (avec opérateurs >, >=, <, <=) :\n" +
@@ -37,7 +41,7 @@ export class FilterListRenderer extends ListRenderer {
                    "- AAAA-MM : Mois (ex: 2023-01)\n" +
                    "- AAAA-MM-JJ ou JJ/MM/AAAA : Jour exact\n" +
                    "- Avec Heure : AAAA-MM-JJ HH:MM (ex: 2023-01-01 14:30)\n" +
-                   "  (HH, HH:MM, HH:MM:SS supportés)";
+                   "  (HH, HH:MM, HH:MM:SS supportés)" + orAndHelp;
         }
         if (field.type === 'boolean') {
             return "Formats supportés :\n" +
@@ -45,7 +49,9 @@ export class FilterListRenderer extends ListRenderer {
                    "- 0 : Faux / Non\n" +
                    "- (vide) : Tous";
         }
-        return "";
+        return "Opérateurs logiques :\n" +
+               "- val1, val2 ou val1 OU val2 : OU\n" +
+               "- val1 ET val2 : ET";
     }
 
     async toggleOptionalField(fieldName) {
