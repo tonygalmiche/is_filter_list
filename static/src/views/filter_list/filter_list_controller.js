@@ -18,8 +18,6 @@ export class FilterListController extends ListController {
         this._savedFiltersPromise = null;
         this._initialLoadDone = false;
 
-        console.log("FilterListController: setup() - Initialisation");
-
         // Lancer le chargement des filtres sauvegardés immédiatement (avant super.setup)
         // Cela démarre la requête async le plus tôt possible
         this._savedFiltersPromise = this._loadSavedFiltersAsync();
@@ -48,24 +46,18 @@ export class FilterListController extends ListController {
         const controller = this;
 
         this.model.load = async (searchParams = {}) => {
-            console.log("FilterListController: model.load intercepté - _initialLoadDone:", controller._initialLoadDone);
-            
             // Pour le premier chargement, attendre que les filtres soient chargés
             if (!controller._initialLoadDone) {
-                console.log("FilterListController: model.load - Premier chargement, attente des filtres...");
                 await controller._savedFiltersPromise;
-                console.log("FilterListController: model.load - Filtres chargés:", controller.filterState.filters);
                 
                 // Ajouter le domaine des filtres aux searchParams
                 const filterDomain = controller.getFilterListDomain();
                 if (filterDomain.length > 0) {
-                    console.log("FilterListController: model.load - Ajout du filterDomain:", filterDomain);
                     const currentDomain = searchParams.domain || [];
                     searchParams = {
                         ...searchParams,
                         domain: [...currentDomain, ...filterDomain]
                     };
-                    console.log("FilterListController: model.load - searchParams.domain:", searchParams.domain);
                 }
                 
                 controller._initialLoadDone = true;
@@ -73,8 +65,6 @@ export class FilterListController extends ListController {
             
             return originalLoad(searchParams);
         };
-        
-        console.log("FilterListController: _patchModelLoad - model.load patché");
     }
 
     /**
@@ -84,10 +74,8 @@ export class FilterListController extends ListController {
         try {
             const viewId = this.env.config.viewId;
             const resModel = this.props.resModel;
-            console.log("FilterListController: _loadSavedFiltersAsync - viewId:", viewId, "resModel:", resModel);
             
             if (!viewId || !resModel) {
-                console.log("FilterListController: _loadSavedFiltersAsync - viewId ou resModel manquant, abandon");
                 this._filtersLoaded = true;
                 return;
             }
@@ -98,16 +86,12 @@ export class FilterListController extends ListController {
                 [viewId, resModel]
             );
             
-            console.log("FilterListController: _loadSavedFiltersAsync - Filtres récupérés:", savedFilters);
-            
             if (savedFilters && Object.keys(savedFilters).length > 0) {
                 Object.assign(this.filterState.filters, savedFilters);
             }
             
             this._filtersLoaded = true;
-            console.log("FilterListController: _loadSavedFiltersAsync - Terminé, filterState.filters:", this.filterState.filters);
         } catch (e) {
-            console.error("FilterListController: _loadSavedFiltersAsync - Erreur:", e);
             this._filtersLoaded = true;
         }
     }
@@ -124,7 +108,7 @@ export class FilterListController extends ListController {
                 [viewId, resModel, fieldName, value]
             );
         } catch (e) {
-            console.error("FilterListController: Error saving filter", e);
+            // Erreur silencieuse lors de la sauvegarde du filtre
         }
     }
 
@@ -133,7 +117,6 @@ export class FilterListController extends ListController {
      * déclenchés par l'utilisateur (changement de filtre, pagination, etc.)
      */
     patchRootLoad() {
-        console.log("FilterListController: patchRootLoad - Patching model.root.load");
         const originalLoad = this.model.root.load.bind(this.model.root);
         const controller = this;
         
@@ -143,9 +126,6 @@ export class FilterListController extends ListController {
              
             // Combiner le domaine de recherche avec le domaine des filtres
             const combinedDomain = [...searchDomain, ...filterDomain];
-            console.log("FilterListController: patchRootLoad.load - searchDomain:", searchDomain);
-            console.log("FilterListController: patchRootLoad.load - filterDomain:", filterDomain);
-            console.log("FilterListController: patchRootLoad.load - combinedDomain:", combinedDomain);
              
             controller.model.root.config.domain = combinedDomain;
              
@@ -168,7 +148,6 @@ export class FilterListController extends ListController {
     }
 
     applyFilters() {
-        console.log("FilterListController: applyFilters - Applying filters");
         if (this.model.root) {
             if (!this.model.root.load.isPatched) {
                 this.patchRootLoad();
@@ -464,14 +443,12 @@ export class FilterListController extends ListController {
                 }
             } else {
                 const fieldLabel = this.props.fields[fieldName]?.string || fieldName;
-                console.warn(`FilterListController: Invalid date format for field ${fieldName}: ${value}`);
                 this.env.services.notification.add(`Champ "${fieldLabel}" : Format de date invalide "${value}"`, {
                     type: "danger",
                 });
             }
         } catch (error) {
             const fieldLabel = this.props.fields[fieldName]?.string || fieldName;
-            console.error("FilterListController: Error parsing date", error);
             this.env.services.notification.add(`Champ "${fieldLabel}" : Erreur lors du traitement de la date "${value}"`, {
                 type: "danger",
             });
