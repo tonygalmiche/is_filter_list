@@ -1,6 +1,6 @@
 /** @odoo-module */
 import { ListController } from "@web/views/list/list_controller";
-import { useState, onWillStart, onWillRender, onMounted } from "@odoo/owl";
+import { useState, onWillRender } from "@odoo/owl";
 import { session } from "@web/session";
 import { useService } from "@web/core/utils/hooks";
 import { browser } from "@web/core/browser/browser";
@@ -9,42 +9,88 @@ export class FilterListController extends ListController {
     static template = "is_filter_list.FilterListView";
 
     setup() {
-        super.setup();
+        // Initialiser les services et l'état AVANT d'appeler super.setup()
         this.orm = useService("orm");
         this.filterState = useState({
             filters: {},
         });
-        this.initialReloadNeeded = false;
+        this._filtersLoaded = false;
+        this._savedFiltersPromise = null;
+        this._initialLoadDone = false;
 
-        // Patch immediately if possible
-        if (this.model && this.model.root) {
-             this.patchLoad();
-        }
+        console.log("FilterListController: setup() - Initialisation");
 
-        onWillStart(async () => {
-            await this.loadSavedFilters();
-        });
+        // Lancer le chargement des filtres sauvegardés immédiatement (avant super.setup)
+        // Cela démarre la requête async le plus tôt possible
+        this._savedFiltersPromise = this._loadSavedFiltersAsync();
 
-        // Ensure load is patched (in case root is recreated)
+        // Maintenant appeler super.setup() qui va déclencher useModelWithSampleData
+        super.setup();
+
+        // Patcher la méthode load du model IMMÉDIATEMENT après super.setup()
+        // pour intercepter le premier chargement et y injecter les filtres
+        this._patchModelLoad();
+
+        // Patch du load de root pour les rechargements suivants (après le premier)
         onWillRender(() => {
             if (this.model && this.model.root && !this.model.root.load.isPatched) {
-                this.patchLoad();
-            }
-        });
-
-        onMounted(() => {
-            if (this.initialReloadNeeded) {
-                this.applyFilters();
-                this.initialReloadNeeded = false;
+                this.patchRootLoad();
             }
         });
     }
 
-    async loadSavedFilters() {
+    /**
+     * Patch la méthode model.load() pour intercepter le premier chargement
+     * et y ajouter les filtres sauvegardés
+     */
+    _patchModelLoad() {
+        const originalLoad = this.model.load.bind(this.model);
+        const controller = this;
+
+        this.model.load = async (searchParams = {}) => {
+            console.log("FilterListController: model.load intercepté - _initialLoadDone:", controller._initialLoadDone);
+            
+            // Pour le premier chargement, attendre que les filtres soient chargés
+            if (!controller._initialLoadDone) {
+                console.log("FilterListController: model.load - Premier chargement, attente des filtres...");
+                await controller._savedFiltersPromise;
+                console.log("FilterListController: model.load - Filtres chargés:", controller.filterState.filters);
+                
+                // Ajouter le domaine des filtres aux searchParams
+                const filterDomain = controller.getFilterListDomain();
+                if (filterDomain.length > 0) {
+                    console.log("FilterListController: model.load - Ajout du filterDomain:", filterDomain);
+                    const currentDomain = searchParams.domain || [];
+                    searchParams = {
+                        ...searchParams,
+                        domain: [...currentDomain, ...filterDomain]
+                    };
+                    console.log("FilterListController: model.load - searchParams.domain:", searchParams.domain);
+                }
+                
+                controller._initialLoadDone = true;
+            }
+            
+            return originalLoad(searchParams);
+        };
+        
+        console.log("FilterListController: _patchModelLoad - model.load patché");
+    }
+
+    /**
+     * Charge les filtres sauvegardés de manière asynchrone
+     */
+    async _loadSavedFiltersAsync() {
         try {
             const viewId = this.env.config.viewId;
             const resModel = this.props.resModel;
-            if (!viewId || !resModel) return;
+            console.log("FilterListController: _loadSavedFiltersAsync - viewId:", viewId, "resModel:", resModel);
+            
+            if (!viewId || !resModel) {
+                console.log("FilterListController: _loadSavedFiltersAsync - viewId ou resModel manquant, abandon");
+                this._filtersLoaded = true;
+                return;
+            }
 
             const savedFilters = await this.orm.call(
                 "is.filter.list.mem.var",
@@ -52,22 +98,17 @@ export class FilterListController extends ListController {
                 [viewId, resModel]
             );
             
+            console.log("FilterListController: _loadSavedFiltersAsync - Filtres récupérés:", savedFilters);
+            
             if (savedFilters && Object.keys(savedFilters).length > 0) {
                 Object.assign(this.filterState.filters, savedFilters);
-                
-                // Apply filters immediately if model is ready
-                if (this.model && this.model.root) {
-                    if (!this.model.root.load.isPatched) {
-                        this.patchLoad();
-                    }
-                    // Trigger reload to apply the loaded filters
-                    await this.model.root.load();
-                } else {
-                    this.initialReloadNeeded = true;
-                }
             }
+            
+            this._filtersLoaded = true;
+            console.log("FilterListController: _loadSavedFiltersAsync - Terminé, filterState.filters:", this.filterState.filters);
         } catch (e) {
-            console.error("FilterListController: Error loading saved filters", e);
+            console.error("FilterListController: _loadSavedFiltersAsync - Erreur:", e);
+            this._filtersLoaded = true;
         }
     }
 
@@ -87,23 +128,31 @@ export class FilterListController extends ListController {
         }
     }
 
-    patchLoad() {
+    /**
+     * Patch la méthode load de model.root pour les rechargements 
+     * déclenchés par l'utilisateur (changement de filtre, pagination, etc.)
+     */
+    patchRootLoad() {
+        console.log("FilterListController: patchRootLoad - Patching model.root.load");
         const originalLoad = this.model.root.load.bind(this.model.root);
+        const controller = this;
+        
         this.model.root.load = async (params = {}) => {
-             const searchDomain = this.env.searchModel.domain;
-             const filterDomain = this.getFilterListDomain();
+            const searchDomain = controller.env.searchModel.domain;
+            const filterDomain = controller.getFilterListDomain();
              
-             // Update the config domain
-             // We need to ensure we don't lose the search domain
-             const combinedDomain = [...searchDomain, ...filterDomain];
-             console.log("FilterListController: combinedDomain", combinedDomain);
+            // Combiner le domaine de recherche avec le domaine des filtres
+            const combinedDomain = [...searchDomain, ...filterDomain];
+            console.log("FilterListController: patchRootLoad.load - searchDomain:", searchDomain);
+            console.log("FilterListController: patchRootLoad.load - filterDomain:", filterDomain);
+            console.log("FilterListController: patchRootLoad.load - combinedDomain:", combinedDomain);
              
-             this.model.root.config.domain = combinedDomain;
+            controller.model.root.config.domain = combinedDomain;
              
-             // Also try to pass it in params to be sure
-             const newParams = { ...params, domain: combinedDomain };
+            // Passer le domaine combiné dans les params
+            const newParams = { ...params, domain: combinedDomain };
              
-             return originalLoad(newParams);
+            return originalLoad(newParams);
         };
         this.model.root.load.isPatched = true;
     }
@@ -119,9 +168,10 @@ export class FilterListController extends ListController {
     }
 
     applyFilters() {
+        console.log("FilterListController: applyFilters - Applying filters");
         if (this.model.root) {
             if (!this.model.root.load.isPatched) {
-                 this.patchLoad();
+                this.patchRootLoad();
             }
             this.model.root.load();
         }

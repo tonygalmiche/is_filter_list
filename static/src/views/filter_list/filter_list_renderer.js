@@ -49,12 +49,44 @@ export class FilterListRenderer extends ListRenderer {
     }
 
     async toggleOptionalField(fieldName) {
+        // Vérifier si le champ va être masqué (il est actuellement actif)
+        const wasActive = this.optionalActiveFields[fieldName];
+        
         await super.toggleOptionalField(fieldName);
+        
+        // Si le champ était actif et qu'il y avait un filtre, l'effacer
+        if (wasActive && this.props.filters[fieldName]) {
+            this.props.onFilterChange(fieldName, '');
+        }
+        
         this.props.list.model.load();
     }
 
     toggleOptionalFieldGroup(groupId) {
+        // Récupérer les champs du groupe qui vont être masqués
+        const fieldNames = this.allColumns
+            .filter(
+                (col) =>
+                    col.type === "field" &&
+                    col.relatedPropertyField &&
+                    col.relatedPropertyField.id === groupId
+            )
+            .map((col) => col.name);
+        
+        // Vérifier si le groupe va être masqué (tous les champs sont actuellement actifs)
+        const willBeHidden = fieldNames.every((fieldName) => this.optionalActiveFields[fieldName]);
+        
         super.toggleOptionalFieldGroup(groupId);
+        
+        // Si le groupe est masqué, effacer les filtres des champs concernés
+        if (willBeHidden) {
+            for (const fieldName of fieldNames) {
+                if (this.props.filters[fieldName]) {
+                    this.props.onFilterChange(fieldName, '');
+                }
+            }
+        }
+        
         this.props.list.model.load();
     }
 }
