@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 
 #TODO:
-#- Pour les dates pouvoir faire des plages de dates. >=2020 et <=2025
-#- Pour les autres champs pouvoir mettre des virgules pour indiquer plusieurs valeur
 #- mettre des * devant, derrière ou au milieu pour préciser contient ou commence par ou finir par
 
 
