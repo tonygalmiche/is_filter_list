@@ -351,10 +351,36 @@ export class FilterListController extends ListController {
                 return boolDomain;
             }
         } else {
-            return [[fieldName, 'ilike', value]];
+            // Champs char/text : gérer le wildcard *
+            return this.getTextDomain(fieldName, value);
         }
         
         return null;
+    }
+
+    /**
+     * Génère le domaine pour un champ texte avec support du wildcard *
+     * - Sans * : ilike (contient)
+     * - toto* : commence par toto (=like 'toto%')
+     * - *toto : se termine par toto (=like '%toto')
+     * - toto*tutu : commence par toto et se termine par tutu (=like 'toto%tutu')
+     * - *toto* : contient toto (équivalent à ilike)
+     */
+    getTextDomain(fieldName, value) {
+        if (!value.includes('*')) {
+            // Pas de wildcard, comportement par défaut : ilike (contient)
+            return [[fieldName, 'ilike', value]];
+        }
+        
+        // Remplacer * par % pour la syntaxe SQL LIKE
+        // Échapper les % et _ existants dans la valeur (caractères spéciaux LIKE)
+        let likeValue = value
+            .replace(/%/g, '\\%')
+            .replace(/_/g, '\\_')
+            .replace(/\*/g, '%');
+        
+        // Utiliser =like pour un matching exact avec wildcards
+        return [[fieldName, '=like', likeValue]];
     }
 
     getHiddenFields() {

@@ -49,7 +49,12 @@ export class FilterListRenderer extends ListRenderer {
                    "- 0 : Faux / Non\n" +
                    "- (vide) : Tous";
         }
-        return "Opérateurs logiques :\n" +
+        return "Recherche texte :\n" +
+               "- abc : contient 'abc'\n" +
+               "- abc* : commence par 'abc'\n" +
+               "- *abc : se termine par 'abc'\n" +
+               "- abc*xyz : commence par 'abc' et se termine par 'xyz'\n" +
+               "\nOpérateurs logiques :\n" +
                "- val1, val2 ou val1 OU val2 : OU\n" +
                "- val1 ET val2 : ET";
     }
